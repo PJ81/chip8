@@ -8,7 +8,7 @@ Chip8::Chip8() {
 	backClr = Color{ 0x99, 0x66, 0x00, 0xff };
 	foreClr = Color{ 0xff, 0xcc, 0x00, 0xff };
 
-	ticksPerSec = 16;
+	ticksPerSec = 8;
 	terminate = false;
 	lowRes = true;
 

@@ -31,5 +31,5 @@ int main(int argc, char** argv) {
 	srand((unsigned int)time(0));
 
 	if (argc > 1) return openFile(argv[1]);
-	else return openFile("D:\\#_DEV_#\\_projects\\chip8-rev4\\chip8\\splash.ch8");
+	else return openFile("..\\chip8\\splash.ch8");
 }
