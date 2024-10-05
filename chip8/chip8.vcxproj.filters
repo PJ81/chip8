@@ -1,0 +1,28 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="chip8.cpp">
+      <Filter>chip8</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="chip8.h">
+      <Filter>chip8</Filter>
+    </ClInclude>
+    <ClInclude Include="keyboard.h">
+      <Filter>chip8</Filter>
+    </ClInclude>
+    <ClInclude Include="stack.h">
+      <Filter>chip8</Filter>
+    </ClInclude>
+    <ClInclude Include="chip8_instructions.h">
+      <Filter>chip8</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="chip8">
+      <UniqueIdentifier>{7d5421d3-a388-49b1-8ee4-d6ffc2db723f}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,170 @@
+#include "chip8_instructions.h"
+
+Chip8::Chip8() {
+
+	PC = 0x200;
+	I = 0;
+	state = delay = sound = 0;
+	backClr = Color{ 0x99, 0x66, 0x00, 0xff };
+	foreClr = Color{ 0xff, 0xcc, 0x00, 0xff };
+
+	ticksPerSec = 16;
+	terminate = false;
+	lowRes = true;
+
+	// quirks
+	cpuType = CHIP_8;
+
+	memset(V, 0, sizeof(V));
+	memset(flagsStorage, 0, sizeof(flagsStorage));
+	memset(memory, 0, sizeof(memory));
+
+	updateResolution();
+
+	unsigned char sprites[16 * 5] = {
+		0xF0, 0x90, 0x90, 0x90, 0xF0,
+		0x20, 0x60, 0x20, 0x20, 0x70,
+		0xF0, 0x10, 0xF0, 0x80, 0xF0,
+		0xF0, 0x10, 0xF0, 0x10, 0xF0,
+		0x90, 0x90, 0xF0, 0x10, 0x10,
+		0xF0, 0x80, 0xF0, 0x10, 0xF0,
+		0xF0, 0x80, 0xF0, 0x90, 0xF0,
+		0xF0, 0x10, 0x20, 0x40, 0x40,
+		0xF0, 0x90, 0xF0, 0x90, 0xF0,
+		0xF0, 0x90, 0xF0, 0x10, 0xF0,
+		0xF0, 0x90, 0xF0, 0x90, 0x90,
+		0xE0, 0x90, 0xE0, 0x90, 0xE0,
+		0xF0, 0x80, 0x80, 0x80, 0xF0,
+		0xE0, 0x90, 0x90, 0x90, 0xE0,
+		0xF0, 0x80, 0xF0, 0x80, 0xF0,
+		0xF0, 0x80, 0xF0, 0x80, 0x80 
+	};
+
+	unsigned char bigSprites[16 * 10] = {
+		0xFF, 0xFF, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF,
+		0x18, 0x78, 0x78, 0x18, 0x18, 0x18, 0x18, 0x18, 0xFF, 0xFF,
+		0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF,
+		0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF,
+		0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, 0x03, 0x03, 0x03, 0x03,
+		0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF,
+		0xFF, 0xFF, 0x03, 0x03, 0x06, 0x0C, 0x18, 0x18, 0x18, 0x18,
+		0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF,
+		0x7E, 0xFF, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, 0xC3, 0xC3, 0xC3,
+		0xFC, 0xFC, 0xC3, 0xC3, 0xFC, 0xFC, 0xC3, 0xC3, 0xFC, 0xFC,
+		0x3C, 0xFF, 0xC3, 0xC0, 0xC0, 0xC0, 0xC0, 0xC3, 0xFF, 0x3C,
+		0xFC, 0xFE, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFE, 0xFC,
+		0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC0, 0xC0, 0xC0, 0xC0
+	};
+
+	int idx = I;
+	for (int l = 0; l < 16 * 5; l++) {
+		memory[idx++] = sprites[l];
+	}
+
+	for (int l = 0; l < 16 * 10; l++) {
+		memory[idx++] = bigSprites[l];
+	}
+
+	createFuncTables();
+}
+
+Chip8::~Chip8() {
+	delete imgBuffer;
+}
+
+void Chip8::emulate() {
+
+	keyboard.readKey();
+
+	blit();
+
+	if (delay > 0) delay--;
+	if (sound > 0) {
+		//std::cout << '\a';
+		sound--;
+	}
+	
+	if (state && isHalting()) return;
+
+	for (int z = 0; z < ticksPerSec; z++) {
+		keyboard.readKey();
+
+		unsigned short opCode = ((memory[PC] << 8) | memory[PC + 1]);
+		bool b = (this->*opCodeTbl[(opCode & 0xff00) >> 12])(opCode);
+
+		if (b) {
+			PC += 2;
+			if (PC >= EoF) return;
+		}
+
+		if (state) break;
+	}
+}
+
+bool Chip8::isHalting() {
+	unsigned char s = keyboard.getAnyKey();
+
+	switch (state) {
+	case 1:
+		if (s < 16) {
+			V[vX] = s;
+			state = 2;
+		} break;
+	case 2:
+		state = s == 255 ? 0 : 2;
+	}
+	return state;
+}
+
+void Chip8::blit() {
+	BeginDrawing();
+
+	ClearBackground(backClr);
+
+	for (int y = 0; y < hei; y++) {
+		for (int x = 0; x < wid; x++) {
+			if (imgBuffer[x + wid * y] == 1) {
+				DrawRectangle(x * pixelSize, y * pixelSize, pixelSize, pixelSize, foreClr);
+			}
+		}
+	}
+
+	EndDrawing();
+}
+
+void Chip8::loadRom(std::ifstream& file) {
+	file.seekg(0, std::ios::end);
+	EoF = file.tellg();
+	file.seekg(0, std::ios::beg);
+
+	file.read((char*)&memory[PC], EoF);
+
+	EoF += PC;
+}
+
+void Chip8::createFuncTables() {
+	for (int x = 0; x < 16; x++) {
+		zeroTbl[x] = &Chip8::nul;
+		eightTbl[x] = &Chip8::nul;
+		ffTbl[x] = &Chip8::nul;
+	}
+
+	opCodeTbl[0] = &Chip8::x00; opCodeTbl[1] = &Chip8::x01; opCodeTbl[2] = &Chip8::x02; opCodeTbl[3] = &Chip8::x03;
+	opCodeTbl[4] = &Chip8::x04; opCodeTbl[5] = &Chip8::x05; opCodeTbl[6] = &Chip8::x06; opCodeTbl[7] = &Chip8::x07;
+	opCodeTbl[8] = &Chip8::x08; opCodeTbl[9] = &Chip8::x09; opCodeTbl[10] = &Chip8::x0A; opCodeTbl[11] = &Chip8::x0B;
+	opCodeTbl[12] = &Chip8::x0C; opCodeTbl[13] = &Chip8::x0D; opCodeTbl[14] = &Chip8::x0E; opCodeTbl[15] = &Chip8::x0F;
+
+	zeroTbl[0] = &Chip8::cls; zeroTbl[6] = &Chip8::scu; zeroTbl[7] = &Chip8::scd; zeroTbl[8] = &Chip8::scu; zeroTbl[9] = &Chip8::scr; zeroTbl[10] = &Chip8::scl;
+	zeroTbl[11] = &Chip8::exit; zeroTbl[12] = &Chip8::low; zeroTbl[13] = &Chip8::high; zeroTbl[14] = &Chip8::ret;
+
+	eightTbl[0] = &Chip8::ld_vx_vy; eightTbl[1] = &Chip8::or_vx_vy; eightTbl[2] = &Chip8::and_vx_vy; eightTbl[3] = &Chip8::xor_vx_vy;
+	eightTbl[4] = &Chip8::add_vx_vy; eightTbl[5] = &Chip8::sub_vx_vy; eightTbl[6] = &Chip8::shr_vx_vy; eightTbl[7] = &Chip8::subn_vx_vy;
+	eightTbl[14] = &Chip8::shl_vx_vy;
+
+	ffTbl[0] = &Chip8::ld_hf_vx; ffTbl[1] = &Chip8::ld_dt_vx; ffTbl[3] = &Chip8::ld_b_vx; ffTbl[5] = &Chip8::ld_i_vx;
+	ffTbl[6] = &Chip8::ld_vx_i; ffTbl[7] = &Chip8::ld_vx_dt; ffTbl[8] = &Chip8::ld_st_vx; ffTbl[9] = &Chip8::ld_f_vx;
+	ffTbl[10] = &Chip8::ld_vx_k; ffTbl[11] = &Chip8::ld_r_vx; ffTbl[12] = &Chip8::ld_vx_r; ffTbl[14] = &Chip8::add_i_vx;
+}
